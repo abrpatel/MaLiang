@@ -9,7 +9,6 @@ import UIKit
 
 public protocol CanvasDelegate: class {
     func didBeginDrawing()
-    func didClearDrawing()
 }
 
 open class Canvas: MetalView {
@@ -179,8 +178,6 @@ open class Canvas: MetalView {
         if display {
             data.appendClearAction()
         }
-        
-        canvasDelegate?.didClearDrawing()
     }
     
     open override func layoutSubviews() {
