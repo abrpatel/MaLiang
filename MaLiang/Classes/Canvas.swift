@@ -7,8 +7,14 @@
 
 import UIKit
 
+protocol CanvasDelegate: class {
+    func didBeginDrawing()
+    func didClearDrawing()
+}
+
 open class Canvas: MetalView {
-    
+    weak var canvasDelegate: CanvasDelegate?
+
     // MARK: - Brushes
     
     /// default round point brush, will not show in registeredBrushes
@@ -173,6 +179,8 @@ open class Canvas: MetalView {
         if display {
             data.appendClearAction()
         }
+        
+        canvasDelegate?.didClearDrawing()
     }
     
     open override func layoutSubviews() {
@@ -302,6 +310,7 @@ open class Canvas: MetalView {
             lastRenderedPan = Pan(point: acturalBegin, force: gesture.force)
             bezierGenerator.begin(with: acturalBegin)
             pushPoint(location, to: bezierGenerator, force: gesture.force)
+            canvasDelegate?.didBeginDrawing()
         }
         else if gesture.state == .changed {
             pushPoint(location, to: bezierGenerator, force: gesture.force)
