@@ -7,13 +7,13 @@
 
 import UIKit
 
-protocol CanvasDelegate: class {
+public protocol CanvasDelegate: class {
     func didBeginDrawing()
     func didClearDrawing()
 }
 
 open class Canvas: MetalView {
-    weak var canvasDelegate: CanvasDelegate?
+    open weak var canvasDelegate: CanvasDelegate?
 
     // MARK: - Brushes
     
