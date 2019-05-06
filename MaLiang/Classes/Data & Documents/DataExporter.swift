@@ -44,6 +44,24 @@ open class DataExporter {
         }
     }
     
+    public static func contentData(from canvas: Canvas) -> NSData? {
+        do {
+            let encoder = JSONEncoder()
+            
+            let data = canvas.data
+            let content = CanvasContent(lineStrips: data?.elements.compactMap { $0 as? LineStrip } ?? [],
+                                        chartlets: data?.elements.compactMap { $0 as? Chartlet } ?? [])
+            
+            let contentData = try encoder.encode(content)
+            
+            return contentData as NSData
+        } catch {
+            print(error.localizedDescription)
+            
+            return nil
+        }
+    }
+    
     open func saveSynchronously(to directory: URL, progress: ProgressHandler?) throws {
         /// make sure the directory is empty
         let contents = try FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil, options: [])

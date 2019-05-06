@@ -32,6 +32,30 @@ open class DataImporter {
         }
     }
     
+    public static func importData(value: NSData, to canvas: Canvas) {
+        if value.length > 0 {
+            let decoder = JSONDecoder()
+            
+            DispatchQueue(label: "com.maliang.importing").async {
+                do {
+                    let content = try decoder.decode(CanvasContent.self, from: value as Data)
+                    
+                    /// import elements to canvas
+                    content.lineStrips.forEach { $0.brush = canvas.findBrushBy(name: $0.brushName) }
+                    
+                    DispatchQueue.main.async {
+                        /// redraw must be call on main thread
+                        canvas.redraw()
+                    }
+                } catch {
+                    DispatchQueue.main.async {
+                        print(error.localizedDescription)
+                    }
+                }
+            }
+        }
+    }
+    
     public static func importDataSynchronously(from directory: URL, to canvas: Canvas, progress: ProgressHandler? = nil) throws {
         
         let decoder = JSONDecoder()
