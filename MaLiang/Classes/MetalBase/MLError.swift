@@ -7,7 +7,7 @@
 
 import Foundation
 
-enum MLError: Error {
+public enum MLError: Error {
     
     /// the requested file does not exists
     case fileNotExists(String)
@@ -17,4 +17,7 @@ enum MLError: Error {
     
     /// directory for saving must not have any ohter contents
     case directoryNotEmpty(URL)
+    
+    /// running MaLiang on a Similator
+    case simulatorUnsupported
 }

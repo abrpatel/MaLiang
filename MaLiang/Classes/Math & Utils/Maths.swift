@@ -23,12 +23,14 @@ struct Vertex {
 struct Point {
     var position: vector_float4
     var color: vector_float4
+    var angle: Float
     var size: Float
-    
-    init(x: CGFloat, y: CGFloat, color: MLColor, size: CGFloat) {
+
+    init(x: CGFloat, y: CGFloat, color: MLColor, size: CGFloat, angle: CGFloat = 0) {
         self.position = vector_float4(Float(x), Float(y), 0, 1)
         self.size = Float(size)
         self.color = color.toFloat4()
+        self.angle = Float(angle)
     }
 }
 
@@ -93,56 +95,104 @@ class Matrix {
         m[10] = z
         return self
     }
+}
+
+// MARK: - Point Utils
+extension CGPoint {
     
-    @discardableResult
-    func rotation(x: Float, y: Float, z: Float)  -> Matrix {
-        m[0] = cos(y) * cos(z)
-        m[4] = cos(z) * sin(x) * sin(y) - cos(x) * sin(z)
-        m[8] = cos(x) * cos(z) * sin(y) + sin(x) * sin(z)
-        m[1] = cos(y) * sin(z)
-        m[5] = cos(x) * cos(z) + sin(x) * sin(y) * sin(z)
-        m[9] = -cos(z) * sin(x) + cos(x) * sin(y) * sin(z)
-        m[2] = -sin(y)
-        m[6] = cos(y) * sin(x)
-        m[10] = cos(x) * cos(y)
-        return self
+    static func middle(p1: CGPoint, p2: CGPoint) -> CGPoint {
+        return CGPoint(x: (p1.x + p2.x) * 0.5, y: (p1.y + p2.y) * 0.5)
+    }
+    
+    func distance(to other: CGPoint) -> CGFloat {
+        let p = pow(x - other.x, 2) + pow(y - other.y, 2)
+        return sqrt(p)
+    }
+    
+    func angel(to other: CGPoint = .zero) -> CGFloat {
+        let point = self - other        
+        if y == 0 {
+            return x >= 0 ? 0 : CGFloat.pi
+        }
+        return -CGFloat(atan2f(Float(point.y), Float(point.x)))
+    }
+    
+    func toFloat4(z: CGFloat = 0, w: CGFloat = 1) -> vector_float4 {
+        return [Float(x), Float(y), Float(z) ,Float(w)]
+    }
+    
+    func toFloat2() -> vector_float2 {
+        return [Float(x), Float(y)]
+    }
+    
+    func offsetedBy(x: CGFloat = 0, y: CGFloat = 0) -> CGPoint {
+        var point = self
+        point.x += x
+        point.y += y
+        return point
+    }
+    
+    func rotatedBy(_ angle: CGFloat, anchor: CGPoint) -> CGPoint {
+        let point = self - anchor
+        let a = Double(-angle)
+        let x = Double(point.x)
+        let y = Double(point.y)
+        let x_ = x * cos(a) - y * sin(a);
+        let y_ = x * sin(a) + y * cos(a);
+        return CGPoint(x: CGFloat(x_), y: CGFloat(y_)) + anchor
     }
 }
 
-
-public func +(lhs: CGPoint, rhs: CGPoint) -> CGPoint {
+func +(lhs: CGPoint, rhs: CGPoint) -> CGPoint {
     return CGPoint(x: lhs.x + rhs.x, y: lhs.y + rhs.y)
 }
 
-public func +=(lhs: inout CGPoint, rhs: CGPoint) {
+func +=(lhs: inout CGPoint, rhs: CGPoint) {
     lhs = lhs + rhs
 }
 
-public func -(lhs: CGPoint, rhs: CGPoint) -> CGPoint {
+func -(lhs: CGPoint, rhs: CGPoint) -> CGPoint {
     return CGPoint(x: lhs.x - rhs.x, y: lhs.y - rhs.y)
 }
 
-public func *(lhs: CGPoint, rhs: CGFloat) -> CGPoint {
+func *(lhs: CGPoint, rhs: CGFloat) -> CGPoint {
     return CGPoint(x: lhs.x * rhs, y: lhs.y * rhs)
 }
 
-public func /(lhs: CGPoint, rhs: CGFloat) -> CGPoint {
+func /(lhs: CGPoint, rhs: CGFloat) -> CGPoint {
     return CGPoint(x: lhs.x / rhs, y: lhs.y / rhs)
 }
 
-public func +(lhs: CGSize, rhs: CGSize) -> CGSize {
+func +(lhs: CGSize, rhs: CGSize) -> CGSize {
     return CGSize(width: lhs.width + rhs.width, height: lhs.height + rhs.height)
 }
 
-public func *(lhs: CGSize, rhs: CGFloat) -> CGSize {
+func *(lhs: CGSize, rhs: CGFloat) -> CGSize {
     return CGSize(width: lhs.width * rhs, height: lhs.height * rhs)
 }
 
-public func /(lhs: CGSize, rhs: CGFloat) -> CGSize {
+func /(lhs: CGSize, rhs: CGFloat) -> CGSize {
     return CGSize(width: lhs.width / rhs, height: lhs.height / rhs)
 }
 
-public extension Comparable {
+func +(lhs: CGPoint, rhs: CGSize) -> CGPoint {
+    return CGPoint(x: lhs.x + rhs.width, y: lhs.y + rhs.height)
+}
+
+func -(lhs: CGPoint, rhs: CGSize) -> CGPoint {
+    return CGPoint(x: lhs.x - rhs.width, y: lhs.y - rhs.height)
+}
+
+func *(lhs: CGPoint, rhs: CGSize) -> CGPoint {
+    return CGPoint(x: lhs.x * rhs.width, y: lhs.y * rhs.height)
+}
+
+func /(lhs: CGPoint, rhs: CGSize) -> CGPoint {
+    return CGPoint(x: lhs.x / rhs.width, y: lhs.y / rhs.height)
+}
+
+
+extension Comparable {
     func valueBetween(min: Self, max: Self) -> Self {
         if self > max {
             return max

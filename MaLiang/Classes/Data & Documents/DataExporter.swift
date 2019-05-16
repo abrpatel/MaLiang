@@ -16,13 +16,33 @@ open class DataExporter {
     /// create documents from specified canvas
     public init(canvas: Canvas) {
         let data = canvas.data
-        content = CanvasContent(lineStrips: data?.elements.compactMap { $0 as? LineStrip } ?? [],
+        content = CanvasContent(size: canvas.size,
+                                lineStrips: data?.elements.compactMap { $0 as? LineStrip } ?? [],
                                 chartlets: data?.elements.compactMap { $0 as? Chartlet } ?? [])
         textures = canvas.textures
     }
     
     private var content: CanvasContent
     private var textures: [MLTexture]
+
+    public static func contentData(from canvas: Canvas) -> NSData? {
+        do {
+            let encoder = JSONEncoder()
+            
+            let data = canvas.data
+            let content = CanvasContent(size: canvas.size,
+                                        lineStrips: data?.elements.compactMap { $0 as? LineStrip } ?? [],
+                                        chartlets: data?.elements.compactMap { $0 as? Chartlet } ?? [])
+            
+            let contentData = try encoder.encode(content)
+            
+            return contentData as NSData
+        } catch {
+            print(error.localizedDescription)
+            
+            return nil
+        }
+    }
 
     /// Save contents to disk
     ///
@@ -41,24 +61,6 @@ open class DataExporter {
                     result?(.failure(error))
                 }
             }
-        }
-    }
-    
-    public static func contentData(from canvas: Canvas) -> NSData? {
-        do {
-            let encoder = JSONEncoder()
-            
-            let data = canvas.data
-            let content = CanvasContent(lineStrips: data?.elements.compactMap { $0 as? LineStrip } ?? [],
-                                        chartlets: data?.elements.compactMap { $0 as? Chartlet } ?? [])
-            
-            let contentData = try encoder.encode(content)
-            
-            return contentData as NSData
-        } catch {
-            print(error.localizedDescription)
-            
-            return nil
         }
     }
     

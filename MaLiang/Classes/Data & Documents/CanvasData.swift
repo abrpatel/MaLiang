@@ -30,14 +30,14 @@ public struct ClearAction: CanvasElement {
 /// content data on canvas
 open class CanvasData {
     
-    /// elements array before an clear action
-    open internal(set) var clearedElements: [[CanvasElement]] = []
+    /// elements array before an clear action, avoid to change this value when drawing
+    open var clearedElements: [[CanvasElement]] = []
     
-    /// current drawing elements
-    open internal(set) var elements: [CanvasElement] = []
+    /// current drawing elements, avoid to change this value when drawing
+    open var elements: [CanvasElement] = []
     
-    /// current unfinished element
-    open internal(set) var currentElement: CanvasElement?
+    /// current unfinished element, avoid to change this value when drawing
+    open var currentElement: CanvasElement?
     
     /// Append a set of lines to current element in document
     ///
@@ -58,6 +58,8 @@ open class CanvasData {
             let lineStrip = LineStrip(lines: lines, brush: brush)
             currentElement = lineStrip
             undoArray.removeAll()
+            
+            observers.lineStrip(lineStrip, didBeginOn: self)
             h_onElementBegin?(self)
         }
     }
@@ -68,11 +70,13 @@ open class CanvasData {
         chartlet.index = lastElementIndex + 1
         elements.append(chartlet)
         undoArray.removeAll()
+        
+        observers.element(chartlet, didFinishOn: self)
         h_onElementFinish?(self)
     }
     
     /// index for latest element
-    private var lastElementIndex: Int {
+    open var lastElementIndex: Int {
         return elements.last?.index ?? 0
     }
     
@@ -83,6 +87,9 @@ open class CanvasData {
         element.index = lastElementIndex + 1
         elements.append(element)
         currentElement = nil
+        undoArray.removeAll()
+
+        observers.element(element, didFinishOn: self)
         h_onElementFinish?(self)
     }
     
@@ -94,6 +101,9 @@ open class CanvasData {
         }
         clearedElements.append(elements)
         elements.removeAll()
+        undoArray.removeAll()
+
+        observers.dataDidClear(self)
     }
     
     // MARK: - Undo & Redo
@@ -120,6 +130,7 @@ open class CanvasData {
         } else {
             return false
         }
+        observers.dataDidUndo(self)
         h_onUndo?(self)
         return true
     }
@@ -135,8 +146,19 @@ open class CanvasData {
             elements.append(last)
         }
         undoArray.removeLast()
+        observers.dataDidRedo(self)
         h_onRedo?(self)
         return true
+    }
+    
+    // MARK: - Observers
+    private var observers = DataObserverPool()
+    
+    // add an observer to observe data changes, observers are not retained
+    open func addObserver(_ observer: DataObserver) {
+        // pure nil objects
+        observers.clean()
+        observers.addObserver(observer)
     }
     
     // MARK: - EventHandler
@@ -147,28 +169,28 @@ open class CanvasData {
     private var h_onRedo: EventHandler?
     private var h_onUndo: EventHandler?
     
-    /// this closure will be called when a continuously elements begins
+    @available(*, deprecated, message: "Use Observers instead")
     @discardableResult
     public func onElementBegin(_ h: @escaping EventHandler) -> Self {
         h_onElementBegin = h
         return self
     }
-    
-    /// this closure will be called when an element finished
+
+    @available(*, deprecated, message: "Use Observers instead")
     @discardableResult
     public func onElementFinish(_ h: @escaping EventHandler) -> Self {
         h_onElementFinish = h
         return self
     }
-    
-    /// this closure will be called when a redo command is performed
+
+    @available(*, deprecated, message: "Use Observers instead")
     @discardableResult
     public func onRedo(_ h: @escaping EventHandler) -> Self {
         h_onRedo = h
         return self
     }
-    
-    /// this closure will be called when an undo command is performed
+
+    @available(*, deprecated, message: "Use Observers instead")
     @discardableResult
     public func onUndo(_ h: @escaping EventHandler) -> Self {
         h_onUndo = h

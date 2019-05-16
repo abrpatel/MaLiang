@@ -25,7 +25,8 @@ The name of "MaLiang" comes from a boy who had a magical brush in Chinese ancien
 - [x] **Zoom** & **Scale**
 - [x] **Export** to image
 - [x] **Save** vector contents to disk
-- [ ] Texture rotation
+- [x] Texture **Rotation**
+- [x] **Glowing** Lines
 
 [Buy me a cup of coffee](DONATE.md) if I have saved your time.
 
@@ -149,6 +150,12 @@ let data = UIImage(named: "chartlet").pngData()
 try canvas.registerChartlet(with: data)
 ```
 
+You can apply **rotation** to chartlet by passing a counter clockwise angle in radius when adding it to the canvas:
+
+```swift
+canvas.renderChartlet(at: location, size: chartletSize, textureID: texture.id, rotation: angle)
+```
+
 #### Text
 
 Text element can be rendered to canvas by the Chartlet feature. MaLiang leaves the work of text layout and styles to your self.
@@ -175,13 +182,13 @@ let exporter = DataExporter(canvas: canvas)
 // 2. save to empty folders on disk:
 exporter.save(to: localPath, progress: progressHandler, result: resultHandler)
 
-// also you can use another synchronous method to do de work Synchronously
+// also you can use another synchronous method to do this work Synchronously
 exporter.saveSynchronously(to: locakPath, progress: progressHandler)
 ```
 
 Then, contents of canvas and some document infomations will be saved to files in the directory you provided.
 
-**`MaLiang` does not implement the archive logic for files, so you can implement your own archive Logics**
+**`MaLiang` does not zip the folders, you can implement your own archive Logics refer to the sample project**
 
 ### Reading
 

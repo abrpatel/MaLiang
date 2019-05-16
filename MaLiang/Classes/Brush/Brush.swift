@@ -18,7 +18,7 @@ open class Brush {
     
     // unique identifier for a specifyed brush, should not be changed over all your apps
     // make this value uniform when saving or reading canvas content from a file
-    open internal(set) var name: String
+    open var name: String
     
     /// interal texture
     open private(set) var textureID: UUID?
@@ -27,7 +27,6 @@ open class Brush {
     open private(set) weak var target: Canvas?
 
     // opacity of texture, affects the darkness of stroke
-    // set opacity to 1 may cause heavy aliasing
     open var opacity: CGFloat = 0.3 {
         didSet {
             updateRenderingColor()
@@ -48,12 +47,28 @@ open class Brush {
     // defaults to false, the stroke size in visual will stay with the original value
     open var scaleWithCanvas = false
     
+    // force used when tap the canvas, defaults to 0.1
+    open var forceOnTap: CGFloat = 1
+    
     /// color of stroke
     open var color: UIColor = .black {
         didSet {
             updateRenderingColor()
         }
     }
+    
+    /// texture rotation for this brush
+    public enum Rotation {
+        /// angele is fixed to specified value
+        case fixed(CGFloat)
+        /// angle of texture is random
+        case random
+        /// angle of texture is ahead with to line orientation
+        case ahead
+    }
+    
+    /// texture rotation for this brush, defaults to .fixed(0)
+    open var rotation = Rotation.fixed(0)
     
     // randering color, same color to the color property with alpha reseted to alpha * opacity
     internal var renderingColor: MLColor = MLColor(red: 0, green: 0, blue: 0, alpha: 1)
@@ -81,21 +96,34 @@ open class Brush {
     }
     
     /// get a line with specified begin and end location with force info
-    open func makeLine(from: Pan, to: Pan) -> MLLine {
-        var endForce = from.force * 0.95 + to.force * 0.05
-        endForce = pow(endForce, forceSensitive)
-        return makeLine(from: from.point, to: to.point, force: endForce)
+    open func makeLine(from: Pan, to: Pan) -> [MLLine] {
+        let endForce = from.force * 0.95 + to.force * 0.05
+        let forceRate = pow(endForce, forceSensitive)
+        return makeLine(from: from.point, to: to.point, force: forceRate)
     }
-
-    /// get a line with specified begin and end location
-    open func makeLine(from: CGPoint, to: CGPoint, force: CGFloat = 1) -> MLLine {
+    
+    /// make lines to render with specified begin and end location
+    ///
+    /// - Parameters:
+    ///   - from: begin location
+    ///   - to: end location
+    ///   - force: force that effects the line width
+    ///   - uniqueColor: these lines will use current color as unique color if sets to true, defaults to false
+    /// - Returns: lines to render
+    open func makeLine(from: CGPoint, to: CGPoint, force: CGFloat? = nil, uniqueColor: Bool = false) -> [MLLine] {
+        let force = force ?? forceOnTap
         let scale = scaleWithCanvas ? 1 : canvasScale
         let line = MLLine(begin: (from + canvasOffset) / canvasScale,
                           end: (to + canvasOffset) / canvasScale,
                           pointSize: pointSize * force / scale,
                           pointStep: pointStep / scale,
-                          color: renderingColor)
-        return line
+                          color: uniqueColor ? renderingColor : nil)
+        return [line]
+    }
+    
+    /// some brush may have cached unfinished lines, return them here
+    open func finishLineStrip(at end: Pan) -> [MLLine] {
+        return []
     }
 
     private var canvasScale: CGFloat {
@@ -185,7 +213,7 @@ open class Brush {
         
         commandEncoder?.setRenderPipelineState(pipelineState)
         
-        if let vertex_buffer = lineStrip.retrieveBuffers() {
+        if let vertex_buffer = lineStrip.retrieveBuffers(rotation: rotation) {
             commandEncoder?.setVertexBuffer(vertex_buffer, offset: 0, index: 0)
             commandEncoder?.setVertexBuffer(target.uniform_buffer, offset: 0, index: 1)
             commandEncoder?.setVertexBuffer(target.transform_buffer, offset: 0, index: 2)
@@ -203,11 +231,11 @@ open class Brush {
 extension Brush {
     @available(*, deprecated, message: "", renamed: "makeLine(from:to:)")
     open func pan(from: Pan, to: Pan) -> MLLine {
-        return makeLine(from: from, to: to)
+        return makeLine(from: from, to: to).first!
     }
     
     @available(*, deprecated, message: "", renamed: "makeLine(from:to:force:)")
     open func line(from: CGPoint, to: CGPoint, force: CGFloat = 1) -> MLLine {
-        return makeLine(from: from, to: to, force: force)
+        return makeLine(from: from, to: to, force: force).first!
     }
 }

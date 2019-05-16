@@ -7,13 +7,8 @@
 
 import UIKit
 
-public protocol CanvasDelegate: class {
-    func didBeginDrawing()
-}
-
 open class Canvas: MetalView {
-    open weak var canvasDelegate: CanvasDelegate?
-
+    
     // MARK: - Brushes
     
     /// default round point brush, will not show in registeredBrushes
@@ -22,6 +17,25 @@ open class Canvas: MetalView {
     /// printer to print image textures on canvas
     open private(set) var printer: Printer!
     
+    /// the actural size of canvas in points, may larger than current bounds
+    /// size must between bounds size and 5120x5120
+    open var size: CGSize {
+        return drawableSize / contentScaleFactor
+    }
+    
+    // delegate & observers
+    
+    open weak var renderingDelegate: RenderingDelegate?
+    
+    internal var actionObservers = ActionObserverPool()
+    
+    // add an observer to observe data changes, observers are not retained
+    open func addObserver(_ observer: ActionObserver) {
+        // pure nil objects
+        actionObservers.clean()
+        actionObservers.addObserver(observer)
+    }
+
     /// Register a brush with image data
     ///
     /// - Parameter texture: texture data of brush
@@ -60,9 +74,9 @@ open class Canvas: MetalView {
     open private(set) var registeredBrushes: [Brush] = []
     
     /// find a brush by name
-    /// default brush will retured if brush of name provided not exists
+    /// nill will be retured if brush of name provided not exists
     open func findBrushBy(name: String?) -> Brush? {
-        return registeredBrushes.first { $0.name == name } ?? defaultBrush
+        return registeredBrushes.first { $0.name == name }
     }
     
     /// All textures created by this canvas
@@ -202,7 +216,7 @@ open class Canvas: MetalView {
     
     /// redraw elemets in document
     /// - Attention: thie method must be called on main thread
-    open func redraw(on target: RenderTarget? = nil, display: Bool = true) {
+    open func redraw(on target: RenderTarget? = nil) {
     
         let target = target ?? screenTarget!
         
@@ -215,6 +229,8 @@ open class Canvas: MetalView {
         
         /// submit commands
         target.commitCommands()
+        
+        actionObservers.canvas(self, didRedrawOn: target)
     }
     
     // MARK: - Bezier
@@ -232,7 +248,7 @@ open class Canvas: MetalView {
             return
         }
         var lastPan = lastRenderedPan ?? Pan(point: vertices[0], force: force)
-        let deltaForce = (force - (lastRenderedPan?.force ?? 0)) / CGFloat(vertices.count)
+        let deltaForce = (force - (lastRenderedPan?.force ?? force)) / CGFloat(vertices.count)
         for i in 1 ..< vertices.count {
             let p = vertices[i]
             let pointStep = currentBrush.pointStep
@@ -243,10 +259,10 @@ open class Canvas: MetalView {
                     // distance larger than step
                     (pointStep > 1 && lastPan.point.distance(to: p) >= pointStep)
             {
-                let f = lastPan.force + deltaForce
-                let pan = Pan(point: p, force: f)
+                let force = lastPan.force + deltaForce
+                let pan = Pan(point: p, force: force)
                 let line = currentBrush.makeLine(from: lastPan, to: pan)
-                lines.append(line)
+                lines.append(contentsOf: line)
                 lastPan = pan
                 lastRenderedPan = pan
             }
@@ -265,12 +281,8 @@ open class Canvas: MetalView {
     
     open func renderTap(at point: CGPoint, to: CGPoint? = nil) {
         let brush = currentBrush!
-        var line = brush.makeLine(from: point, to: to ?? point)
-        /// fix the opacity of color when there is only one point
-        let delta = max((brush.pointSize - brush.pointStep), 0) / brush.pointSize
-        let opacity = brush.opacity + (1 - brush.opacity) * delta
-        line.color = brush.color.toMLColor(opacity: opacity)
-        render(lines: [line])
+        let lines = brush.makeLine(from: point, to: to ?? point)
+        render(lines: lines)
     }
     
     /// draw a chartlet to canvas
@@ -279,20 +291,40 @@ open class Canvas: MetalView {
     ///   - point: location where to draw the chartlet
     ///   - size: size of texture
     ///   - textureID: id of texture for drawing
-    open func renderChartlet(at point: CGPoint, size: CGSize, textureID: UUID) {
-        let chartlet = Chartlet(center: point, size: size, textureID: textureID, canvas: self)
+    ///   - rotation: rotation angle of texture for drawing
+    open func renderChartlet(at point: CGPoint, size: CGSize, textureID: UUID, rotation: CGFloat = 0) {
+        
+        let chartlet = Chartlet(center: point, size: size, textureID: textureID, angle: rotation, canvas: self)
+
+        guard renderingDelegate?.canvas(self, shouldRenderChartlet: chartlet) ?? true else {
+            return
+        }
+        
         data.append(chartlet: chartlet)
         chartlet.drawSelf(on: screenTarget)
         screenTarget.commitCommands()
         setNeedsDisplay()
+        
+        actionObservers.canvas(self, didRenderChartlet: chartlet)
     }
     
     // MARK: - Gestures
     @objc private func handleTapGesture(_ gesture: UITapGestureRecognizer) {
         if gesture.state == .recognized {
             let location = gesture.location(in: self)
+            
+            guard renderingDelegate?.canvas(self, shouldRenderTapAt: location) ?? true else {
+                return
+            }
+            
             renderTap(at: location)
+            let unfishedLines = currentBrush.finishLineStrip(at: Pan(point: location, force: currentBrush.forceOnTap))
+            if unfishedLines.count > 0 {
+                render(lines: unfishedLines)
+            }
             data.finishCurrentElement()
+            
+            actionObservers.canvas(self, didRenderTapAt: location)
         }
     }
     
@@ -301,19 +333,30 @@ open class Canvas: MetalView {
         let location = gesture.location(in: self)
         
         if gesture.state == .began {
+            /// 结束上一个图案
+            data.finishCurrentElement()
+
             /// 取实际的手势起点作为笔迹的起点
             let acturalBegin = gesture.acturalBeginLocation
-            data.finishCurrentElement()
+            
+            guard renderingDelegate?.canvas(self, shouldBeginLineAt: acturalBegin, force: gesture.force) ?? true else {
+                return
+            }
+            
             lastRenderedPan = Pan(point: acturalBegin, force: gesture.force)
             bezierGenerator.begin(with: acturalBegin)
             pushPoint(location, to: bezierGenerator, force: gesture.force)
-            canvasDelegate?.didBeginDrawing()
+            
+            actionObservers.canvas(self, didBeginLineAt: acturalBegin, force: gesture.force)
         }
         else if gesture.state == .changed {
+            guard bezierGenerator.points.count > 0 else { return }
             pushPoint(location, to: bezierGenerator, force: gesture.force)
+            actionObservers.canvas(self, didMoveLineTo: location, force: gesture.force)
         }
         else if gesture.state == .ended || gesture.state == .cancelled || gesture.state == .failed {
             let count = bezierGenerator.points.count
+            guard count > 0 else { return }
             if count < 3 {
                 renderTap(at: bezierGenerator.points.first!, to: bezierGenerator.points.last!)
             } else {
@@ -321,7 +364,13 @@ open class Canvas: MetalView {
             }
             bezierGenerator.finish()
             lastRenderedPan = nil
+            let unfishedLines = currentBrush.finishLineStrip(at: Pan(point: location, force: gesture.force))
+            if unfishedLines.count > 0 {
+                render(lines: unfishedLines)
+            }
             data.finishCurrentElement()
+            
+            actionObservers.canvas(self, didFinishLineAt: location, force: gesture.force)
         }
     }
 }

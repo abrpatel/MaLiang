@@ -10,16 +10,16 @@ import CoreGraphics
 
 /// a shot line with serveral points, base unit of line strip
 public struct MLLine: Codable {
-    var begin: CGPoint
-    var end: CGPoint
+    public internal(set) var begin: CGPoint
+    public internal(set) var end: CGPoint
     
-    var pointSize: CGFloat
-    var pointStep: CGFloat
+    public internal(set) var pointSize: CGFloat
+    public internal(set) var pointStep: CGFloat
     
     // optional color, color of line strip will be used if this sets to nil
-    var color: MLColor?
+    public internal(set) var color: MLColor?
     
-    init(begin: CGPoint, end: CGPoint, pointSize: CGFloat, pointStep: CGFloat, color: MLColor?) {
+    public init(begin: CGPoint, end: CGPoint, pointSize: CGFloat, pointStep: CGFloat, color: MLColor?) {
         self.begin = begin
         self.end = end
         self.pointSize = pointSize
@@ -27,8 +27,12 @@ public struct MLLine: Codable {
         self.color = color
     }
     
-    var length: CGFloat {
+    public var length: CGFloat {
         return begin.distance(to: end)
+    }
+    
+    public var angle: CGFloat {
+        return end.angel(to: begin)
     }
     
     // MARK: - Codable
@@ -38,6 +42,7 @@ public struct MLLine: Codable {
         case end
         case size
         case step
+        case color
     }
     
     public init(from decoder: Decoder) throws {
@@ -50,6 +55,7 @@ public struct MLLine: Codable {
         pointSize = CGFloat(intSize) / 10
         let intStep = try container.decode(Int.self, forKey: .step)
         pointStep = CGFloat(intStep) / 10
+        color = try? container.decode(MLColor.self, forKey: .color)
     }
     
     public func encode(to encoder: Encoder) throws {
@@ -58,5 +64,8 @@ public struct MLLine: Codable {
         try container.encode(end.encodeToInts(), forKey: .end)
         try container.encode(Int(pointSize * 10), forKey: .size)
         try container.encode(Int(pointStep * 10), forKey: .step)
+        if let color = self.color {
+            try container.encode(color, forKey: .color)
+        }
     }
 }

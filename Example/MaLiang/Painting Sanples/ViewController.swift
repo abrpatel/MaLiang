@@ -22,11 +22,10 @@ class ViewController: UIViewController {
     @IBOutlet weak var backgroundSwitchButton: UIButton!
     @IBOutlet weak var backgroundView: UIImageView!
     
-    @IBOutlet weak var canvas: Canvas!
+    @IBOutlet weak var canvas: ScrollableCanvas!
     
     var filePath: String?
     
-    var brushNames = ["Pen", "Pencil", "Brush", "Eraser"]
     var brushes: [Brush] = []
     var chartlets: [MLTexture] = []
     
@@ -34,14 +33,9 @@ class ViewController: UIViewController {
         return UIColor(red: r, green: g, blue: b, alpha: 1)
     }
     
-    private func registerBrush(with imageName: String) -> Brush {
-        do {
-            let texture = try canvas.makeTexture(with: UIImage(named: imageName)!.pngData()!)
-            return try canvas.registerBrush(name: imageName, textureID: texture.id)
-//            return try canvas.registerBrush(name: imageName, from: UIImage(named: imageName)!)
-        } catch {
-            fatalError(error.localizedDescription)
-        }
+    private func registerBrush(with imageName: String) throws -> Brush {
+        let texture = try canvas.makeTexture(with: UIImage(named: imageName)!.pngData()!)
+        return try canvas.registerBrush(name: imageName, textureID: texture.id)
     }
     
     override func viewDidLoad() {
@@ -50,63 +44,82 @@ class ViewController: UIViewController {
         
         navigationController?.interactivePopGestureRecognizer?.isEnabled = false
         
-        chartlets = [
-            try! canvas.makeTexture(with: UIImage(named: "chartlet-1")!.pngData()!),
-            try! canvas.makeTexture(with: UIImage(named: "chartlet-2")!.pngData()!),
-            try! canvas.makeTexture(with: UIImage(named: "chartlet-3")!.pngData()!),
-        ]
-        
+        chartlets = ["chartlet-1", "chartlet-2", "chartlet-3"].compactMap({ (name) -> MLTexture? in
+            return try? canvas.makeTexture(with: UIImage(named: name)!.pngData()!)
+        })
         canvas.backgroundColor = .clear
-        
-        let pen = canvas.defaultBrush!
-        pen.opacity = 1
-        pen.pointSize = 5
-        pen.pointStep = 1
-        pen.color = color
-        
-        let pencil = registerBrush(with: "pencil")
-        pencil.pointSize = 3
-        pencil.pointStep = 2
-        pencil.forceSensitive = 0.3
-        pencil.opacity = 0.6
-        
-        let brush = registerBrush(with: "brush")
-        brush.pointSize = 30
-        brush.pointStep = 2
-        brush.forceSensitive = 0.6
-        brush.color = color
-        
-        // make eraser with a texture for pencil
-        //        let path = Bundle.main.path(forResource: "pencil", ofType: "png")!
-        //        let texture = try? canvas.makeTexture(with: URL(fileURLWithPath: path))
-        //        let eraser = Eraser(texture: texture, target: canvas)
-        
-        /// make eraser with default round point
-        let eraser = try! canvas.registerBrush(name: "maliang.eraser") as Eraser
-        
-        brushes = [pen, pencil, brush, eraser]
+        canvas.data.addObserver(self)
+        registerBrushes()
+        readDataIfNeeds()
+    }
+    
+    func registerBrushes() {
+        do {
+            let pen = canvas.defaultBrush!
+            pen.name = "Pen"
+            pen.opacity = 0.1
+            pen.pointSize = 5
+            pen.pointStep = 1
+            pen.color = color
+            
+            let pencil = try registerBrush(with: "pencil")
+            pencil.rotation = .random
+            pencil.pointSize = 3
+            pencil.pointStep = 2
+            pencil.forceSensitive = 0.3
+            pencil.opacity = 1
+            
+            let brush = try registerBrush(with: "brush")
+            brush.rotation = .ahead
+            brush.pointSize = 15
+            brush.pointStep = 2
+            brush.forceSensitive = 0.6
+            brush.color = color
+            brush.forceOnTap = 0.5
+            
+            let texture = try canvas.makeTexture(with: UIImage(named: "glow")!.pngData()!)
+            let glow: GlowingBrush = try canvas.registerBrush(name: "glow", textureID: texture.id)
+            glow.opacity = 0.05
+            glow.coreProportion = 0.2
+            glow.pointSize = 20
+            glow.rotation = .ahead
+            
+            let claw = try registerBrush(with: "claw")
+            claw.rotation = .ahead
+            claw.pointSize = 30
+            claw.pointStep = 5
+            claw.forceSensitive = 0.1
+            claw.color = color
+            
+            // make eraser with a texture for claw
+            let eraser = try canvas.registerBrush(name: "Eraser", textureID: claw.textureID) as Eraser
+            eraser.rotation = .ahead
+            
+            /// make eraser with default round point
+            //let eraser = try! canvas.registerBrush(name: "Eraser") as Eraser
+            
+            brushes = [pen, pencil, brush, glow, claw, eraser]
+            
+        } catch MLError.simulatorUnsupported {
+            let alert = UIAlertController(title: "Attension", message: "You are running MaLiang on a Simulator, whitch is not supported by Metal. So painting is not alvaliable now. But you can go on testing your other businesses which are not relative with MaLiang.", preferredStyle: .alert)
+            alert.addAction(title: "确定", style: .cancel)
+            self.present(alert, animated: true, completion: nil)
+        } catch {
+            let alert = UIAlertController(title: "Error", message: error.localizedDescription, preferredStyle: .alert)
+            alert.addAction(title: "确定", style: .cancel)
+            self.present(alert, animated: true, completion: nil)
+        }
         
         brushSegement.removeAllSegments()
         for i in 0 ..< brushes.count {
-            let name = brushNames[i]
+            let name = brushes[i].name
             brushSegement.insertSegment(withTitle: name, at: i, animated: false)
         }
-        brushSegement.selectedSegmentIndex = 0
-        styleChanged(brushSegement)
         
-        canvas.data.onElementBegin { [unowned self] doc in
-            self.redoButton.isEnabled = false
-            }.onElementFinish { [unowned self] doc in
-                self.undoButton.isEnabled = true
-            }.onRedo { [unowned self] doc in
-                self.undoButton.isEnabled = true
-                self.redoButton.isEnabled = doc.canRedo
-            }.onUndo { [unowned self] doc in
-                self.redoButton.isEnabled = true
-                self.undoButton.isEnabled = doc.canUndo
+        if brushes.count > 0 {
+            brushSegement.selectedSegmentIndex = 0
+            styleChanged(brushSegement)
         }
-        
-        readDataIfNeeds()
     }
     
     @IBAction func switchBackground(_ sender: UIButton) {
@@ -141,7 +154,7 @@ class ViewController: UIViewController {
         canvas.clear()
     }
     
-    @IBAction func moreAction(_ sender: Any) {
+    @IBAction func moreAction(_ sender: UIBarButtonItem) {
         let actionSheet = UIAlertController(title: "Choose Actions", message: nil, preferredStyle: .actionSheet)
         actionSheet.addAction(title: "Add Chartlet", style: .default) { [unowned self] (_) in
             self.addChartletAction()
@@ -153,22 +166,20 @@ class ViewController: UIViewController {
             self.saveData()
         }
         actionSheet.addAction(title: "Cancel", style: .cancel)
+        actionSheet.popoverPresentationController?.barButtonItem = sender
         present(actionSheet, animated: true, completion: nil)
     }
     
     func addChartletAction() {
         ChartletPicker.present(from: self, textures: chartlets) { [unowned self] (texture) in
             self.showEditor(for: texture)
-//            let x = CGFloat.random(in: 0 ..< self.canvas.bounds.width)
-//            let y = CGFloat.random(in: 0 ..< self.canvas.bounds.height)
-//            self.canvas.renderChartlet(at: CGPoint(x: x, y: y), size: texture.size, textureID: texture.id)
         }
     }
     
     func showEditor(for texture: MLTexture) {
         ChartletEditor.present(from: self, for: texture) { [unowned self] (editor) in
             let result = editor.convertCoordinate(to: self.canvas)
-            self.canvas.renderChartlet(at: result.center, size: result.size, textureID: texture.id)
+            self.canvas.renderChartlet(at: result.center, size: result.size, textureID: texture.id, rotation: result.angle)
         }
     }
     
@@ -207,16 +218,17 @@ class ViewController: UIViewController {
             return
         }
         chrysan.showMessage("Reading...")
-
+        
         let path = Path(file)
         let temp = Path.temp().resource("temp.zip")
         let contents = Path.temp().resource("contents")
-
+        
         do {
             try? FileManager.default.removeItem(at: temp.url)
             try FileManager.default.copyItem(at: path.url, to: temp.url)
             try Zip.unzipFile(temp.url, destination: contents.url, overwrite: true, password: nil)
         } catch {
+            self.chrysan.hide()
             let alert = UIAlertController(title: "unzip failed", message: error.localizedDescription, preferredStyle: .alert)
             alert.addAction(title: "OK", style: .cancel)
             self.present(alert, animated: true, completion: nil)
@@ -235,7 +247,7 @@ class ViewController: UIViewController {
             } else {
                 self.chrysan.show(.succeed, message: "Reading Succeed!", hideDelay: 1)
             }
-
+            
         }
     }
     
@@ -270,6 +282,35 @@ class ViewController: UIViewController {
         
         colorSampleView.backgroundColor = color
         canvas.currentBrush.color = color
+    }
+}
+
+extension ViewController: DataObserver {
+    /// called when a line strip is begin
+    func lineStrip(_ strip: LineStrip, didBeginOn data: CanvasData) {
+        self.redoButton.isEnabled = false
+    }
+    
+    /// called when a element is finished
+    func element(_ element: CanvasElement, didFinishOn data: CanvasData) {
+        self.undoButton.isEnabled = true
+    }
+    
+    /// callen when clear the canvas
+    func dataDidClear(_ data: CanvasData) {
+        
+    }
+    
+    /// callen when undo
+    func dataDidUndo(_ data: CanvasData) {
+        self.undoButton.isEnabled = true
+        self.redoButton.isEnabled = data.canRedo
+    }
+    
+    /// callen when redo
+    func dataDidRedo(_ data: CanvasData) {
+        self.undoButton.isEnabled = true
+        self.redoButton.isEnabled = data.canRedo
     }
 }
 

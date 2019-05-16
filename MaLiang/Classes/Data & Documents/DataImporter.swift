@@ -10,6 +10,31 @@ import Foundation
 /// class for import existing data from saved data
 open class DataImporter {
     
+    public static func importData(value: NSData, to canvas: Canvas) {
+        if value.length > 0 {
+            let decoder = JSONDecoder()
+            
+            DispatchQueue(label: "com.maliang.importing").async {
+                do {
+                    let content = try decoder.decode(CanvasContent.self, from: value as Data)
+                    
+                    /// import elements to canvas
+                    content.lineStrips.forEach { $0.brush = canvas.findBrushBy(name: $0.brushName) ?? canvas.defaultBrush }
+                    content.chartlets.forEach { $0.canvas = canvas }
+                    canvas.data.elements = (content.lineStrips + content.chartlets).sorted(by: { $0.index < $1.index})
+                    
+                    DispatchQueue.main.async {
+                        /// redraw must be call on main thread
+                        canvas.redraw()
+                    }
+                } catch {
+                    DispatchQueue.main.async {
+                        print(error.localizedDescription)
+                    }
+                }
+            }
+        }
+    }
     
     /// import existing data from saved file
     ///
@@ -27,32 +52,6 @@ open class DataImporter {
             } catch {
                 DispatchQueue.main.async {
                     result?(.failure(error))
-                }
-            }
-        }
-    }
-    
-    public static func importData(value: NSData, to canvas: Canvas) {
-        if value.length > 0 {
-            let decoder = JSONDecoder()
-            
-            DispatchQueue(label: "com.maliang.importing").async {
-                do {
-                    let content = try decoder.decode(CanvasContent.self, from: value as Data)
-                    
-                    /// import elements to canvas
-                    content.lineStrips.forEach { $0.brush = canvas.findBrushBy(name: $0.brushName) }
-                    content.chartlets.forEach { $0.canvas = canvas }
-                    canvas.data.elements = (content.lineStrips + content.chartlets).sorted(by: { $0.index < $1.index})
-                    
-                    DispatchQueue.main.async {
-                        /// redraw must be call on main thread
-                        canvas.redraw()
-                    }
-                } catch {
-                    DispatchQueue.main.async {
-                        print(error.localizedDescription)
-                    }
                 }
             }
         }
@@ -92,8 +91,13 @@ open class DataImporter {
             }
         }
         
+        /// update content size for scrollable canvas
+        if let scrollable = canvas as? ScrollableCanvas, let size = content.size {
+            scrollable.contentSize = size
+        }
+        
         /// import elements to canvas
-        content.lineStrips.forEach { $0.brush = canvas.findBrushBy(name: $0.brushName) }
+        content.lineStrips.forEach { $0.brush = canvas.findBrushBy(name: $0.brushName) ?? canvas.defaultBrush }
         content.chartlets.forEach { $0.canvas = canvas }
         canvas.data.elements = (content.lineStrips + content.chartlets).sorted(by: { $0.index < $1.index})
         reportProgress(1, on: progress)

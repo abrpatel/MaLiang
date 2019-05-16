@@ -36,6 +36,11 @@ open class ScrollableCanvas: Canvas {
         }
     }
     
+    /// the actural size of canvas in points, wrapper of contentSize
+    open override var size: CGSize {
+        return contentSize
+    }
+    
     /// the actural drawable size of canvas, may larger than current bounds
     /// contentSize must between bounds size and 5120x5120
     open var contentSize: CGSize = .zero {
@@ -46,11 +51,6 @@ open class ScrollableCanvas: Canvas {
     
     /// get snapthot image for the same size to content
     open override func snapshot() -> UIImage? {
-        /// draw content in texture of the same size to content
-        if contentSize == bounds.size {
-            return super.snapshot()
-        }
-        
         /// create a new render target with same size to the content, for snapshoting
         let target = SnapshotTarget(canvas: self)
         return target.getImage()
@@ -78,15 +78,26 @@ open class ScrollableCanvas: Canvas {
             scale = scale.valueBetween(min: 1, max: maxScale)
             self.zoom = scale
             self.scale = zoom
-            let offset = offsetAnchor * (scale / currentZoomScale) - location
-            contentOffset = offset.between(min: .zero, max: maxOffset)
+            
+            var offset = offsetAnchor * (scale / currentZoomScale) - location
+            offset = offset.between(min: .zero, max: maxOffset)
+            let offsetChanged = contentOffset == offset
+            contentOffset = offset
+            
             redraw()
             updateScrollIndicators()
+            
+            actionObservers.canvas(self, didZoomTo: zoom)
+            if offsetChanged {
+                actionObservers.canvasDidScroll(self)
+            }
+
         case .ended: fallthrough
         case .cancelled: fallthrough
         case .failed:
             currentZoomScale = zoom
             hidesScrollIndicators()
+            actionObservers.canvas(self, didZoomTo: zoom)
         default: break
         }
     }
@@ -104,6 +115,7 @@ open class ScrollableCanvas: Canvas {
             contentOffset = (offsetAnchor - location).between(min: .zero, max: maxOffset)
             redraw()
             updateScrollIndicators()
+            actionObservers.canvasDidScroll(self)
         default: hidesScrollIndicators()
         }
     }
