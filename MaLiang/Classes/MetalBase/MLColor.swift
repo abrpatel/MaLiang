@@ -55,7 +55,7 @@ public struct MLColor: Codable {
     }
 }
 
-extension UIColor {
+public extension UIColor {
     func toMLColor(opacity: CGFloat = 1) -> MLColor {
         var r: CGFloat = 0
         var g: CGFloat = 0
