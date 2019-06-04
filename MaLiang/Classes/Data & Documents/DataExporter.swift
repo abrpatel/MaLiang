@@ -96,7 +96,7 @@ open class DataExporter {
         /// save textures to folder
         // only chartlet textures will be saved
         let chartletTextureIDs = content.chartlets.map { $0.textureID }
-        let idSet = Set<UUID>(chartletTextureIDs)
+        let idSet = Set<String>(chartletTextureIDs)
         let pendingTextures = textures.compactMap { idSet.contains($0.id) ? $0 : nil }
         let textureDirectory = directory.appendingPathComponent("textures")
         if pendingTextures.count > 0 {
