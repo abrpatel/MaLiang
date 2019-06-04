@@ -7,6 +7,7 @@
 //
 
 import UIKit
+import MaLiang
 
 public extension UIStoryboard {
     

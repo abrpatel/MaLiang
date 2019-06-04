@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import CoreGraphics
 
 /// base infomation for saved documents
 public struct DocumentInfo: Codable {
@@ -13,12 +14,15 @@ public struct DocumentInfo: Codable {
     /// default infomation read form info.plist
     public static let `default` = DocumentInfo()
     
+    /// identifier for this file
+    public var identifier: String?
+    
     /// format version of this document, equal to the library version
     public let version: String
     
     /// the app whitch uses MaLiang to generate this file
     public let app: BundleInfo?
-
+    
     /// library info of MaLiang used in current app
     public let library: BundleInfo?
     
@@ -31,7 +35,9 @@ public struct DocumentInfo: Codable {
     /// number of custom textures used for chartlets and so on
     public var textures: Int = 0
     
-    public init() {
+    /// initialize a document info with specified identifier, an uuid will be used if passed nil
+    public init(identifier: String? = nil) {
+        self.identifier = identifier ?? UUID().uuidString
         library = try? Bundle(for: Canvas.classForCoder()).readInfo()
         app = try? Bundle.main.readInfo()
         version = library?.version ?? "unknown"
@@ -45,10 +51,16 @@ public struct CanvasContent: Codable {
     public var size: CGSize?
     
     /// all linestrips
-    public var lineStrips: [LineStrip]
+    public var lineStrips: [LineStrip] = []
     
     /// chatlets
-    public var chartlets: [Chartlet]
+    public var chartlets: [Chartlet] = []
+    
+    public init(size: CGSize?, lineStrips: [LineStrip], chartlets: [Chartlet]) {
+        self.size = size
+        self.lineStrips = lineStrips
+        self.chartlets = chartlets
+    }
 }
 
 /// base infomation for bundle from info.plist
