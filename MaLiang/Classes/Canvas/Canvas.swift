@@ -35,7 +35,7 @@ open class Canvas: MetalView {
         actionObservers.clean()
         actionObservers.addObserver(observer)
     }
-
+    
     /// Register a brush with image data
     ///
     /// - Parameter texture: texture data of brush
@@ -59,7 +59,7 @@ open class Canvas: MetalView {
     /// Register a new brush with texture already registered on this canvas
     ///
     /// - Parameter textureID: id of a texture, default round texture will be used if sets to nil or texture id not found
-    open func registerBrush<T: Brush>(name: String? = nil, textureID: UUID? = nil) throws -> T {
+    open func registerBrush<T: Brush>(name: String? = nil, textureID: String? = nil) throws -> T {
         let brush = T(name: name, textureID: textureID, target: self)
         registeredBrushes.append(brush)
         return brush
@@ -89,7 +89,7 @@ open class Canvas: MetalView {
     ///   - id: id of texture, will be generated if not provided
     /// - Returns: created texture, if the id provided is already exists, the existing texture will be returend
     @discardableResult
-    override open func makeTexture(with data: Data, id: UUID? = nil) throws -> MLTexture {
+    override open func makeTexture(with data: Data, id: String? = nil) throws -> MLTexture {
         // if id is set, make sure this id is not already exists
         if let id = id, let exists = findTexture(by: id) {
             return exists
@@ -100,19 +100,12 @@ open class Canvas: MetalView {
     }
     
     /// find texture by textureID
-    open func findTexture(by id: UUID) -> MLTexture? {
+    open func findTexture(by id: String) -> MLTexture? {
         return textures.first { $0.id == id }
     }
     
-    /// enable force
-    open var forceEnabled: Bool {
-        get {
-            return paintingGesture?.forceEnabled ?? false
-        }
-        set {
-            paintingGesture?.forceEnabled = newValue
-        }
-    }
+    @available(*, deprecated, message: "this property will be removed soon, set the property forceSensitive on brush to 0 instead, changing this value will cause no affects")
+    open var forceEnabled: Bool = true
     
     // MARK: - Zoom and scale
     /// the scale level of view, all things scales
@@ -144,14 +137,14 @@ open class Canvas: MetalView {
             screenTarget.contentOffset = newValue
         }
     }
-
+    
     // setup gestures
     open var paintingGesture: PaintingGestureRecognizer?
     open var tapGesture: UITapGestureRecognizer?
-
+    
     open func setupGestureRecognizers() {
         /// gesture to render line
-        paintingGesture = PaintingGestureRecognizer.addToTarget(self, action: #selector(handlePaingtingGesture(_:)))
+//        paintingGesture = PaintingGestureRecognizer.addToTarget(self, action: #selector(handlePaingtingGesture(_:)))
         /// gesture to render dot
         let tapGesture = UITapGestureRecognizer(target: self, action: #selector(handleTapGesture(_:)))
         addGestureRecognizer(tapGesture)
@@ -202,6 +195,21 @@ open class Canvas: MetalView {
     // MARK: - Document
     public private(set) var data: CanvasData!
     
+    /// reset data on canvas, this method will drop the old data object and create a new one.
+    /// - Attention: SAVE your data before call this method!
+    /// - Parameter redraw: if should redraw the canvas after, defaults to true
+    open func resetData(redraw: Bool = true) {
+        let oldData = data!
+        let newData = CanvasData()
+        // link registered observers to new data
+        newData.observers = data.observers
+        data = newData
+        if redraw {
+            self.redraw()
+        }
+        data.observers.data(oldData, didResetTo: newData)
+    }
+    
     public func undo() {
         if let data = data, data.undo() {
             redraw()
@@ -217,7 +225,7 @@ open class Canvas: MetalView {
     /// redraw elemets in document
     /// - Attention: thie method must be called on main thread
     open func redraw(on target: RenderTarget? = nil) {
-    
+        
         let target = target ?? screenTarget!
         
         data.finishCurrentElement()
@@ -292,10 +300,10 @@ open class Canvas: MetalView {
     ///   - size: size of texture
     ///   - textureID: id of texture for drawing
     ///   - rotation: rotation angle of texture for drawing
-    open func renderChartlet(at point: CGPoint, size: CGSize, textureID: UUID, rotation: CGFloat = 0) {
+    open func renderChartlet(at point: CGPoint, size: CGSize, textureID: String, rotation: CGFloat = 0) {
         
         let chartlet = Chartlet(center: point, size: size, textureID: textureID, angle: rotation, canvas: self)
-
+        
         guard renderingDelegate?.canvas(self, shouldRenderChartlet: chartlet) ?? true else {
             return
         }
@@ -310,67 +318,84 @@ open class Canvas: MetalView {
     
     // MARK: - Gestures
     @objc private func handleTapGesture(_ gesture: UITapGestureRecognizer) {
-        if gesture.state == .recognized {
-            let location = gesture.location(in: self)
-            
-            guard renderingDelegate?.canvas(self, shouldRenderTapAt: location) ?? true else {
-                return
-            }
-            
-            renderTap(at: location)
-            let unfishedLines = currentBrush.finishLineStrip(at: Pan(point: location, force: currentBrush.forceOnTap))
-            if unfishedLines.count > 0 {
-                render(lines: unfishedLines)
-            }
-            data.finishCurrentElement()
-            
-            actionObservers.canvas(self, didRenderTapAt: location)
+        
+        guard gesture.state == .ended else {
+            return
         }
-    }
-    
-    @objc private func handlePaingtingGesture(_ gesture: PaintingGestureRecognizer) {
+        
+        defer {
+            bezierGenerator.finish()
+            lastRenderedPan = nil
+            data.finishCurrentElement()
+        }
         
         let location = gesture.location(in: self)
         
-        if gesture.state == .began {
-            /// 结束上一个图案
-            data.finishCurrentElement()
+        guard renderingDelegate?.canvas(self, shouldRenderTapAt: location) ?? true else {
+            return
+        }
+        
+        renderTap(at: location)
+        let unfishedLines = currentBrush.finishLineStrip(at: Pan(point: location, force: currentBrush.forceOnTap))
+        if unfishedLines.count > 0 {
+            render(lines: unfishedLines)
+        }
+        actionObservers.canvas(self, didRenderTapAt: location)
+    }
+    
+    override open func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
+        
+        guard let touch = touches.first else {
+            return
+        }
 
-            /// 取实际的手势起点作为笔迹的起点
-            let acturalBegin = gesture.acturalBeginLocation
-            
-            guard renderingDelegate?.canvas(self, shouldBeginLineAt: acturalBegin, force: gesture.force) ?? true else {
-                return
-            }
-            
-            lastRenderedPan = Pan(point: acturalBegin, force: gesture.force)
-            bezierGenerator.begin(with: acturalBegin)
-            pushPoint(location, to: bezierGenerator, force: gesture.force)
-            
-            actionObservers.canvas(self, didBeginLineAt: acturalBegin, force: gesture.force)
+        let pan = Pan(touch: touch, on: self)
+        lastRenderedPan = pan
+
+        guard renderingDelegate?.canvas(self, shouldBeginLineAt: pan.point, force: pan.force) ?? true else {
+            return
         }
-        else if gesture.state == .changed {
-            guard bezierGenerator.points.count > 0 else { return }
-            pushPoint(location, to: bezierGenerator, force: gesture.force)
-            actionObservers.canvas(self, didMoveLineTo: location, force: gesture.force)
+        
+        bezierGenerator.begin(with: pan.point)
+        pushPoint(pan.point, to: bezierGenerator, force: pan.force)
+        actionObservers.canvas(self, didBeginLineAt: pan.point, force: pan.force)
+    }
+    
+    override open func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) {
+        guard bezierGenerator.points.count > 0 else { return }
+        guard let touch = touches.first else {
+            return
         }
-        else if gesture.state == .ended || gesture.state == .cancelled || gesture.state == .failed {
-            let count = bezierGenerator.points.count
-            guard count > 0 else { return }
-            if count < 3 {
-                renderTap(at: bezierGenerator.points.first!, to: bezierGenerator.points.last!)
-            } else {
-                pushPoint(location, to: bezierGenerator, force: gesture.force, isEnd: true)
-            }
+        let pan = Pan(touch: touch, on: self)
+
+        pushPoint(pan.point, to: bezierGenerator, force: pan.force)
+        actionObservers.canvas(self, didMoveLineTo: pan.point, force: pan.force)
+    }
+    
+    override open func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) {
+        
+        defer {
             bezierGenerator.finish()
             lastRenderedPan = nil
-            let unfishedLines = currentBrush.finishLineStrip(at: Pan(point: location, force: gesture.force))
-            if unfishedLines.count > 0 {
-                render(lines: unfishedLines)
-            }
             data.finishCurrentElement()
-            
-            actionObservers.canvas(self, didFinishLineAt: location, force: gesture.force)
         }
+
+        guard let touch = touches.first else {
+            return
+        }
+        let pan = Pan(touch: touch, on: self)
+        let count = bezierGenerator.points.count
+        
+        if count >= 3 {
+            pushPoint(pan.point, to: bezierGenerator, force: pan.force, isEnd: true)
+        } else if count > 0 {
+            renderTap(at: bezierGenerator.points.first!, to: bezierGenerator.points.last!)
+        }
+
+        let unfishedLines = currentBrush.finishLineStrip(at: Pan(point: pan.point, force: pan.force))
+        if unfishedLines.count > 0 {
+            render(lines: unfishedLines)
+        }
+        actionObservers.canvas(self, didFinishLineAt: pan.point, force: pan.force)
     }
 }

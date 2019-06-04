@@ -10,8 +10,28 @@ import MetalKit
 import UIKit
 
 public struct Pan {
+    
     var point: CGPoint
     var force: CGFloat
+
+    init(touch: UITouch, on view: UIView) {
+        if #available(iOS 9.1, *) {
+            point = touch.preciseLocation(in: view)
+        } else {
+            point = touch.location(in: view)
+        }
+        force = touch.force
+        
+        // force on iPad from a finger is always 0, reset to 0.3
+        if UIDevice.current.userInterfaceIdiom == .pad, touch.type == .direct, force == 0 {
+            force = 1
+        }
+    }
+    
+    init(point: CGPoint, force: CGFloat) {
+        self.point = point
+        self.force = force
+    }
 }
 
 open class Brush {
@@ -21,7 +41,7 @@ open class Brush {
     open var name: String
     
     /// interal texture
-    open private(set) var textureID: UUID?
+    open private(set) var textureID: String?
     
     /// target to draw
     open private(set) weak var target: Canvas?
@@ -40,7 +60,8 @@ open class Brush {
     // defaults to 1, this means erery texture calculated will be rendered, dictance calculation will be skiped
     open var pointStep: CGFloat = 1
     
-    // sensitive of pointsize changed from force, from 0 - 1
+    // sensitive of pointsize changed from force, if sets to 0, stroke size will not be affected by force
+    // sets to 1 to make an everage affect
     open var forceSensitive: CGFloat = 0
     
     // indicate if the stroke size in visual will be scaled along with the Canvas
@@ -80,7 +101,7 @@ open class Brush {
     
     // designed initializer, will be called by target when reigster called
     // identifier is not necessary if you won't save the content of your canvas to file
-    required public init(name: String?, textureID: UUID?, target: Canvas) {
+    required public init(name: String?, textureID: String?, target: Canvas) {
         self.name = name ?? UUID().uuidString
         self.target = target
         self.textureID = textureID
