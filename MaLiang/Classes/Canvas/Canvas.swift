@@ -141,9 +141,6 @@ open class Canvas: MetalView {
     // setup gestures
     open var paintingGesture: PaintingGestureRecognizer?
     open var tapGesture: UITapGestureRecognizer?
-
-    // Move point tracker
-    private var movePoints = [CGPoint]()
     
     open func setupGestureRecognizers() {
         /// gesture to render line
@@ -332,22 +329,18 @@ open class Canvas: MetalView {
             data.finishCurrentElement()
         }
         
-        if movePoints.count <= 10 {
-            let location = gesture.location(in: self)
-            
-            guard renderingDelegate?.canvas(self, shouldRenderTapAt: location) ?? true else {
-                return
-            }
-            
-            renderTap(at: location)
-            let unfishedLines = currentBrush.finishLineStrip(at: Pan(point: location, force: currentBrush.forceOnTap))
-            if unfishedLines.count > 0 {
-                render(lines: unfishedLines)
-            }
-            actionObservers.canvas(self, didRenderTapAt: location)
+        let location = gesture.location(in: self)
+        
+        guard renderingDelegate?.canvas(self, shouldRenderTapAt: location) ?? true else {
+            return
         }
         
-        movePoints = [CGPoint]()
+        renderTap(at: location)
+        let unfishedLines = currentBrush.finishLineStrip(at: Pan(point: location, force: currentBrush.forceOnTap))
+        if unfishedLines.count > 0 {
+            render(lines: unfishedLines)
+        }
+        actionObservers.canvas(self, didRenderTapAt: location)
     }
     
     override open func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
@@ -377,7 +370,6 @@ open class Canvas: MetalView {
 
         pushPoint(pan.point, to: bezierGenerator, force: pan.force)
         actionObservers.canvas(self, didMoveLineTo: pan.point, force: pan.force)
-        movePoints.append(pan.point)
     }
     
     override open func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) {
